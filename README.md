@@ -10,7 +10,7 @@ build is out of date.
 
 ---
 
-## How the tool behaves (read before class)
+## How the tool behaves
 
 Three things shape every demo:
 
@@ -295,53 +295,6 @@ first, because the chunk it needs may still be sitting there unsorted.
 Step 5 of any tcache-miss walkthrough states the order. Have a student read it
 aloud and compare it with whatever ordering your textbook gives.
 
----
-
-## Suggested 50-minute running order
-
-| min | demo | concept |
-|---|---|---|
-| 0–6 | 1 | chunk ≠ request; 8-byte overhead; size classes |
-| 6–12 | 2 | header fields; `PREV_INUSE` describes the *previous* chunk |
-| 12–20 | 3, 4 | tcache: fast path, LIFO reuse, 7-entry cap, fastbin overflow |
-| 20–25 | 5 | tcache ceiling at chunk 1040 |
-| 25–35 | 6 | **unsorted bin, coalescing, the pin** — the centrepiece |
-| 35–43 | 7, 8 | sorting into small/large bins; splitting |
-| 43–48 | 9 | top chunk, `brk()`, why syscalls are rare |
-| 48–50 | 10 | search order recap |
-
-If you have only 25 minutes: **Demos 1, 3, 6.** Those three carry the course.
-
----
-
-## Questions to put to the class
-
-Each has a wrong answer that is almost universal.
-
-1. *"`malloc(24)` and `malloc(25)` — same chunk or different?"* Different, and the
-   jump is 16 bytes, not 1.
-2. *"After `free(p)`, can the neighbouring chunk tell?"* Not if it went to the
-   tcache or a fastbin. This is the whole reason those bins are fast.
-3. *"Nine `malloc(100)`s freed — where do all nine go?"* Seven tcache, two fastbin.
-4. *"You free 4 MB. Does the process shrink?"* Only if nothing is allocated above
-   it. Demo 6's pin is the counter-example.
-5. *"How many `brk()` calls for 26 allocations?"* One.
-
----
-
-## Known simplifications
-
-State these once so students don't over-generalise. The tool lists them in its own
-panel:
-
-- One arena, one thread, no locking shown.
-- Not modelled: the binmap scan of larger bins, `malloc_consolidate()` on large
-  frees, `last_remainder`, `mmap()` for requests ≥ 128 KB, and the corruption checks
-  in `_int_free` (double-free detection, `key`).
-- Safe-linking is described but pointer values are not shown mangled.
-
-Faithful to glibc 2.39: all size arithmetic, every bin range, the search order,
-splitting, coalescing, `PREV_INUSE`/footer semantics, and the 7-per-bin tcache cap.
 
 ---
 
