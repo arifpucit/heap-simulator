@@ -925,8 +925,10 @@ function buildSteps(n) {
         exec: () => {
           const c = chunkAt(hit.off);
           removeFromBins(hit.off);
-          const rem = splitIfNeeded(c, nb);
+          // file the leftover unsorted chunks BEFORE splitting, so the new
+          // remainder stays in the unsorted bin (glibc's last_remainder)
           if (hit.binId === 'unsorted' || hit.binId === 'large') drainUnsorted();
+          const rem = splitIfNeeded(c, nb);
           S.allocSeq++;
           c.inUse = true; c.label = 'ptr_' + S.allocSeq; c.requestedSize = n; c.bin = null;
           pushLog(`✓ malloc(${n}) → ${addrOf(c.offset)}  [${binLbl}, ${nb}B]`
