@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>malloc(n) Heap Allocation Simulator &mdash; glibc 2.39 (x86-64)</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #E8ECF2;
+    --surface:   #FFFFFF;
+    --surface2:  #EDF1F7;
+    --border:    #B8C8D8;
+    --border2:   #8AA0B8;
+    --text:      #0E1C2A;
+    --muted:     #3A5068;
+    --dim:       #6A8098;
+
+    --teal:      #005A82;
+    --teal-bg:   #CCE8F8;
+    --teal-bd:   #5AAAD0;
+
+    --green:     #0F4A28;
+    --green-bg:  #CCEEDD;
+    --green-bd:  #3A9A68;
+
+    --amber:     #6A3A00;
+    --amber-bg:  #FFE8A0;
+    --amber-bd:  #C8900A;
+
+    --red:       #7A0A0A;
+    --red-bg:    #F8D8D8;
+    --red-bd:    #C06060;
+
+    --purple:    #3A0E6A;
+    --slate:     #1E2E3E;
+    --radius:    10px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size: 19px;
+    line-height: 1.65;
+    min-height: 100vh;
+  }
+
+  header {
+    background: var(--slate);
+    padding: 18px 36px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .logo { font-family: 'Courier New', monospace; font-size: 26px; font-weight: 800; color: #FFF; }
+  .logo span { color: #50C0F0; }
+  .subtitle { font-size: 16px; color: #88AABF; }
+  .hdr-badge {
+    margin-left: auto;
+    background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.28);
+    color: #B8D8EC; font-size: 15px; font-weight: 700;
+    padding: 5px 16px; border-radius: 20px; letter-spacing: 0.4px;
+  }
+
+  .main {
+    max-width: 1200px; margin: 0 auto;
+    padding: 26px 24px 52px;
+    display: grid; grid-template-columns: 1fr 340px; gap: 22px;
+  }
+  @media (max-width: 860px) { .main { grid-template-columns: 1fr; } }
+  .left, .right { display: flex; flex-direction: column; gap: 18px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 22px 26px;
+  }
+  .card-title {
+    font-size: 14px; font-weight: 800; color: var(--dim);
+    letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 16px;
+  }
+
+  /* Input */
+  .controls-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .input-group {
+    display: flex; align-items: center;
+    background: var(--surface2); border: 2px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+  }
+  .input-prefix {
+    padding: 10px 12px; font-family: 'Courier New', monospace;
+    font-size: 19px; font-weight: 700; color: var(--teal);
+    border-right: 2px solid var(--border); white-space: nowrap;
+  }
+  .input-group input[type="number"] {
+    background: transparent; border: none; outline: none;
+    color: var(--text); font-family: 'Courier New', monospace;
+    font-size: 21px; font-weight: 800; width: 84px; padding: 10px 8px;
+  }
+  .input-suffix {
+    padding: 10px 12px; font-size: 15px; font-weight: 600;
+    color: var(--muted); border-left: 2px solid var(--border);
+  }
+
+  /* Buttons — all dark backgrounds, white bold text */
+  .btn {
+    padding: 11px 22px; border-radius: var(--radius); border: none;
+    font-size: 17px; font-weight: 800; cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+    white-space: nowrap; letter-spacing: 0.2px;
+  }
+  .btn:active  { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+  .btn-start { background: #1A3A56; color: #FFF; }
+  .btn-start:hover:not(:disabled) { background: #0E2840; }
+  .btn-next  { background: #005A82; color: #FFF; }
+  .btn-next:hover:not(:disabled)  { background: #003F5C; }
+  .btn-prev  { background: #3A4E62; color: #FFF; }
+  .btn-prev:hover:not(:disabled)  { background: #263848; }
+  .btn-free  { background: #0F5432; color: #FFF; }
+  .btn-free:hover:not(:disabled)  { background: #083820; }
+  .btn-reset { background: #3A3A3A; color: #FFF; }
+  .btn-reset:hover { background: #222; }
+  .btn-auto  { background: #5A2A8A; color: #FFF; }
+  .btn-auto:hover:not(:disabled)  { background: #3E1A62; }
+  .btn-auto.running { background: #7A0A0A; }
+  .btn-auto.running:hover { background: #5A0808; }
+
+  /* Quick pills */
+  .quick-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
+  .quick-label { font-size: 16px; font-weight: 700; color: var(--dim); }
+  .quick-pill {
+    font-family: 'Courier New', monospace; font-size: 15px; font-weight: 700;
+    padding: 5px 14px; border-radius: 20px;
+    border: 2px solid var(--border2); background: #FFF; color: var(--muted);
+    cursor: pointer; transition: all 0.12s;
+  }
+  .quick-pill:hover { border-color: var(--teal); color: #FFF; background: #005A82; }
+
+  /* Step card */
+  .step-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 22px 26px;
+  }
+  .step-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .step-badge {
+    font-size: 16px; font-weight: 800; letter-spacing: 0.6px;
+    padding: 5px 16px; border-radius: 20px; white-space: nowrap; border: none;
+    background: #005A82; color: #FFF;
+  }
+  .step-badge.idle { background: #5A6A7A; color: #FFF; }
+  .step-badge.done { background: #0F5432; color: #FFF; }
+  .step-badge.warn { background: #8A5A00; color: #FFF; }
+  .step-badge.err  { background: #7A0A0A; color: #FFF; }
+  .step-counter { font-size: 17px; font-weight: 700; color: var(--muted); margin-left: auto; }
+
+  .step-text {
+    font-size: 19px; color: var(--text); line-height: 1.8; min-height: 90px;
+  }
+  .step-text code {
+    font-family: 'Courier New', monospace;
+    background: #D0E8F8; color: #003A5A;
+    padding: 2px 7px; border-radius: 5px; font-size: 17px; font-weight: 700;
+  }
+  .hi-green { color: #0A4020; font-weight: 800; }
+  .hi-amber { color: #6A3A00; font-weight: 800; }
+  .hi-red   { color: #7A0A0A; font-weight: 800; }
+
+  /* Progress */
+  .progress-track { display: flex; gap: 5px; margin-top: 18px; }
+  .prog-step { flex: 1; height: 6px; border-radius: 3px; background: var(--border); transition: background 0.3s; }
+  .prog-step.active { background: #005A82; }
+  .prog-step.done   { background: #0F5432; }
+
+  .nav-row { display: flex; align-items: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+  .nav-hint { font-size: 16px; font-weight: 600; color: var(--dim); }
+
+  /* Arena */
+  .arena-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .brk-badge {
+    font-family: 'Courier New', monospace; font-size: 15px; font-weight: 700;
+    color: #FFF; background: #005A82; padding: 4px 12px; border-radius: 6px;
+  }
+  .chunk-row {
+    display: flex; align-items: stretch;
+    border-radius: var(--radius); overflow: hidden;
+    border: 2px solid var(--border); margin-bottom: 7px;
+  }
+  .chunk-hdr {
+    background: #E8EEF4; border-right: 2px solid var(--border);
+    padding: 9px 12px; min-width: 150px; max-width: 150px;
+    font-family: 'Courier New', monospace; font-size: 14px; font-weight: 700;
+    color: var(--muted); display: flex; flex-direction: column; gap: 3px; justify-content: center;
+  }
+  .chunk-body {
+    flex: 1; padding: 10px 16px;
+    display: flex; align-items: center; gap: 10px;
+    font-size: 16px; font-weight: 600;
+  }
+  .chunk-used { background: #D0E8F8; border-color: #5AAAD0; }
+  .chunk-used .chunk-hdr { border-right-color: #5AAAD0; background: #B8D8EE; }
+  .chunk-free { background: #C8EEDD; border-color: #3A9A68; }
+  .chunk-free .chunk-hdr { border-right-color: #3A9A68; background: #A8DAC4; }
+  .chunk-top  { background: #EEF2F6; border-style: dashed; border-color: #8AA0B8; }
+  .chunk-top  .chunk-hdr { background: #E0E8F0; }
+  .chunk-name  { font-weight: 800; font-size: 17px; }
+  .chunk-used  .chunk-name { color: #003A5A; }
+  .chunk-free  .chunk-name { color: #0A3A1E; }
+  .chunk-top   .chunk-name { color: #4A5E72; }
+  .chunk-ptr   { font-family: 'Courier New', monospace; font-size: 15px; font-weight: 700; color: #3A5068; }
+  .chunk-arrow { color: #005A82; font-weight: 900; font-size: 19px; }
+  .chunk-meta  { font-size: 15px; font-weight: 700; color: #3A5068; margin-left: auto; white-space: nowrap; }
+  .brk-line    { border-top: 3px dashed #5AAAD0; margin: 8px 0 4px; }
+  .brk-lbl     { font-family: 'Courier New', monospace; font-size: 14px; font-weight: 800; color: #005A82; text-align: right; margin-bottom: 10px; }
+  .arena-empty { font-size: 17px; font-weight: 600; color: var(--dim); padding: 16px 0; font-style: italic; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 16px; font-weight: 600; color: var(--muted); margin-top: 14px; }
+  .leg-dot { display: inline-block; width: 13px; height: 13px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+
+  /* Stats */
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .stat-card  { background: var(--surface); border: 2px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .stat-label { font-size: 14px; font-weight: 800; color: var(--dim); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 3px; }
+  .stat-val   { font-size: 28px; font-weight: 800; color: var(--text); font-family: 'Courier New', monospace; }
+
+  /* Bins */
+  .bin-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; border-radius: var(--radius);
+    border: 2px solid transparent; margin-bottom: 6px;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .bin-row.active { border-color: #5AAAD0; background: #CCE8F8; }
+  .bin-dot  { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+  .bin-name { font-size: 15px; font-weight: 800; color: var(--muted); min-width: 90px; }
+  .bin-row.active .bin-name { color: #003A5A; }
+  .bin-items { font-family: 'Courier New', monospace; font-size: 15px; font-weight: 700; color: var(--dim); }
+  .bin-items.has { color: #0A3A1E; }
+
+  /* Insight */
+  .insight-card {
+    background: #FFF0B0; border: 2px solid #C89000;
+    border-left: 5px solid #9A6A00; border-radius: var(--radius); padding: 16px 18px;
+  }
+  .insight-lbl { font-size: 14px; font-weight: 800; color: #6A3A00; letter-spacing: 0.6px; margin-bottom: 8px; }
+  .insight-txt { font-size: 16px; font-weight: 600; color: #4A2800; line-height: 1.75; }
+  .insight-txt code { font-family: 'Courier New', monospace; font-weight: 800; font-size: 16px; color: #6A3A00; }
+
+  /* Log */
+  .log-inner {
+    font-family: 'Courier New', monospace; font-size: 15px; font-weight: 700;
+    max-height: 200px; overflow-y: auto;
+    background: #F0F4F8; border: 2px solid var(--border);
+    border-radius: var(--radius); padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .log-entry { line-height: 1.65; }
+  .log-ok    { color: #0A3A1E; }
+  .log-free  { color: #6A3A00; }
+  .log-sys   { color: #3A0E6A; }
+  .log-empty { color: var(--dim); font-style: italic; font-weight: 600; }
+
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo"><span>malloc</span>(n) Simulator</div>
+    <div class="subtitle">Dynamic Heap Allocation — glibc 2.39, x86-64</div>
+  </div>
+  <div class="hdr-badge">SYSTEMS PROGRAMMING · FCCU</div>
+</header>
+
+<div class="main">
+
+  <!-- LEFT -->
+  <div class="left">
+
+    <div class="card">
+      <div class="card-title">Configure allocation</div>
+      <div class="controls-row">
+        <div class="input-group">
+          <span class="input-prefix">malloc(</span>
+          <input type="number" id="n-input" value="4" min="1" max="65536">
+          <span class="input-suffix">bytes )</span>
+        </div>
+        <button class="btn btn-start" id="btn-start" onclick="startAlloc()">&#9654; Start</button>
+        <button class="btn btn-free"  id="btn-free"  onclick="doFree()" disabled>&#8617; free() last</button>
+        <button class="btn btn-reset"               onclick="resetSim()">&#8634; Reset</button>
+      </div>
+      <div class="quick-row">
+        <span class="quick-label">Boundary sizes:</span>
+        <span class="quick-pill" onclick="setN(4)">4 B</span>
+        <span class="quick-pill" onclick="setN(24)">24 B</span>
+        <span class="quick-pill" onclick="setN(25)">25 B</span>
+        <span class="quick-pill" onclick="setN(120)">120 B</span>
+        <span class="quick-pill" onclick="setN(121)">121 B</span>
+        <span class="quick-pill" onclick="setN(1000)">1000 B</span>
+        <span class="quick-pill" onclick="setN(1032)">1032 B</span>
+        <span class="quick-pill" onclick="setN(1033)">1033 B</span>
+      </div>
+      <div style="margin-top:12px;font-size:15px;font-weight:600;color:#3A5068;line-height:1.7">
+        Try <strong>24</strong> then <strong>25</strong> — both are one size class apart, not two.
+        Try <strong>120</strong> then <strong>121</strong> to cross the fastbin limit, and
+        <strong>1032</strong> then <strong>1033</strong> to leave the tcache.
+      </div>
+    </div>
+
+    <!-- Step narration -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-badge idle" id="step-badge">IDLE</div>
+        <span class="step-counter" id="step-counter"></span>
+      </div>
+      <div class="step-text" id="step-text">
+        Enter a byte size above and click <strong>&#9654; Start</strong> to begin the
+        <strong>glibc 2.39</strong> heap allocation walkthrough.<br>
+        Use <strong>&#8592; Prev</strong> and <strong>Next &#8594;</strong> to move one step at a time,
+        or <strong>&#9889; Auto</strong> to run all steps automatically.
+      </div>
+      <div class="progress-track">
+        <div class="prog-step" id="ps-0"></div>
+        <div class="prog-step" id="ps-1"></div>
+        <div class="prog-step" id="ps-2"></div>
+        <div class="prog-step" id="ps-3"></div>
+        <div class="prog-step" id="ps-4"></div>
+        <div class="prog-step" id="ps-5"></div>
+        <div class="prog-step" id="ps-6"></div>
+        <div class="prog-step" id="ps-7"></div>
+      </div>
+      <div class="nav-row">
+        <button class="btn btn-prev" id="btn-prev" onclick="prevStep()" disabled>&#8592; Prev</button>
+        <button class="btn btn-next" id="btn-next" onclick="nextStep()" disabled>Next &#8594;</button>
+        <button class="btn btn-auto" id="btn-auto" onclick="autoPlay()" disabled>&#9889; Auto</button>
+        <span class="nav-hint" id="nav-hint">Start an allocation first.</span>
+      </div>
+    </div>
+
+    <!-- Heap arena -->
+    <div class="card" style="flex:1">
+      <div class="arena-header">
+        <span class="card-title" style="margin:0">Heap Arena</span>
+        <span class="brk-badge" id="brk-badge">brk @ 0x0</span>
+      </div>
+      <div id="chunks-view">
+        <div class="arena-empty">No allocations yet &mdash; click &#9654; Start to begin.</div>
+      </div>
+      <div class="legend">
+        <span><span class="leg-dot" style="background:#D0E8F8;border:2px solid #5AAAD0"></span>Allocated</span>
+        <span><span class="leg-dot" style="background:#C8EEDD;border:2px solid #3A9A68"></span>Free</span>
+        <span><span class="leg-dot" style="background:#EEF2F6;border:2px dashed #8AA0B8"></span>Top chunk</span>
+      </div>
+      <div style="margin-top:12px;padding:12px 14px;background:#F0F4F8;border:1px solid #B8C8D8;border-left:4px solid #005A82;border-radius:8px;font-size:15px;font-weight:600;line-height:2.0;color:#1E2E3E;">
+        <div style="font-size:14px;font-weight:800;color:#6A8098;letter-spacing:0.8px;text-transform:uppercase;margin-bottom:4px;">Chunk header key</div>
+        <div><span style="color:#005A82;font-weight:900;font-family:'Courier New',monospace">|P</span> &nbsp;&nbsp;PREV_INUSE <strong>set</strong> &mdash; previous chunk is in use <em>as far as the allocator is concerned</em></div>
+        <div><span style="color:#C06060;font-weight:900;font-family:'Courier New',monospace">P=0</span> &nbsp;PREV_INUSE <strong>cleared</strong> &mdash; previous chunk is free and consolidation-eligible</div>
+        <div><span style="color:#0F4A28;font-weight:800;font-family:'Courier New',monospace">prev_size</span> <span style="color:#0F4A28">(green)</span> &mdash; footer written by free(), used for backward coalescing</div>
+        <div><span style="color:#8AA0B8;font-family:'Courier New',monospace">prev_size</span> <span style="color:#8AA0B8">(grey)</span> &mdash; not written; belongs to the previous chunk's payload</div>
+        <div style="margin-top:6px;padding-top:6px;border-top:1px solid #B8C8D8;color:#6A3A00">
+          <strong>Watch this:</strong> a chunk in <strong>tcache</strong> or a <strong>fastbin</strong> is drawn green,
+          but its neighbour still shows <span style="color:#005A82;font-weight:900;font-family:'Courier New',monospace">|P</span>.
+          <code style="font-family:'Courier New',monospace">tcache_put()</code> writes nothing outside the freed chunk, so the
+          neighbour cannot tell it was freed &mdash; which is exactly why those chunks are never coalesced.
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT -->
+  <div class="right">
+
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-label">Requested</div><div class="stat-val" id="st-used">0 B</div></div>
+      <div class="stat-card"><div class="stat-label">Heap used</div><div class="stat-val" id="st-heap">0 B</div></div>
+      <div class="stat-card"><div class="stat-label">Chunks</div>  <div class="stat-val" id="st-chk">0</div></div>
+      <div class="stat-card"><div class="stat-label">brk() calls</div><div class="stat-val" id="st-brk">0</div></div>
+    </div>
+
+    <!-- Bins, listed in true glibc 2.39 search order -->
+    <div class="card">
+      <div class="card-title">Free lists &amp; bins &mdash; glibc 2.39</div>
+
+      <div style="font-size:15px;font-weight:700;color:#0A3A1E;background:#CCEEDD;border:2px solid #3A9A68;border-radius:8px;padding:8px 12px;margin-bottom:12px;">
+        Listed in <strong>malloc() search order</strong>. Note that <strong>smallbins are searched
+        before the unsorted bin</strong> &mdash; an exact-size smallbin hit needs no unsorted scan.
+      </div>
+
+      <div class="bin-row" id="bin-tcache">
+        <div class="bin-dot" style="background:#0F5432"></div>
+        <div class="bin-name">tcache</div>
+        <div class="bin-items" id="bi-tcache">empty</div>
+      </div>
+      <div class="bin-row" id="bin-fast">
+        <div class="bin-dot" style="background:#005A82"></div>
+        <div class="bin-name">fastbins</div>
+        <div class="bin-items" id="bi-fast">empty</div>
+      </div>
+      <div class="bin-row" id="bin-small">
+        <div class="bin-dot" style="background:#6A3A00"></div>
+        <div class="bin-name">smallbins</div>
+        <div class="bin-items" id="bi-small">empty</div>
+      </div>
+      <div class="bin-row" id="bin-unsorted">
+        <div class="bin-dot" style="background:#4A1E7A"></div>
+        <div class="bin-name">unsorted bin</div>
+        <div class="bin-items" id="bi-unsorted">empty</div>
+      </div>
+      <div class="bin-row" id="bin-large">
+        <div class="bin-dot" style="background:#3A0E6A"></div>
+        <div class="bin-name">largebins</div>
+        <div class="bin-items" id="bi-large">empty</div>
+      </div>
+      <div class="bin-row" id="bin-top" style="border-color:var(--border)">
+        <div class="bin-dot" style="background:var(--dim)"></div>
+        <div class="bin-name">top chunk</div>
+        <div class="bin-items has" id="bi-top">128 KB free</div>
+      </div>
+
+      <div style="margin-top:12px;font-size:14px;font-weight:600;color:#3A5068;line-height:1.8">
+        <strong>Ranges (x86-64, chunk sizes):</strong><br>
+        tcache 32&ndash;1040 &nbsp;&middot;&nbsp; fastbins 32&ndash;128 &nbsp;&middot;&nbsp;
+        smallbins 32&ndash;1008 &nbsp;&middot;&nbsp; largebins &ge;1024 &nbsp;&middot;&nbsp; unsorted: any size
+      </div>
+    </div>
+
+    <div class="insight-card">
+      <div class="insight-lbl">&#9889; Key insight &mdash; glibc 2.39</div>
+      <div class="insight-txt">
+        <strong>tcache</strong> (added in 2.26) holds up to 7 chunks per size class in a singly-linked
+        LIFO list, and is checked <em>before</em> any lock is taken. Since <strong>2.32</strong> the
+        <code>next</code> pointer is mangled by <code>PROTECT_PTR</code> (safe-linking), and since
+        <strong>2.29</strong> each entry also carries a <code>key</code> for double-free detection &mdash;
+        so a freed tcache chunk holds <strong>two</strong> words, not one.
+        <code>malloc()</code> adds only <strong>8</strong> bytes of overhead, not 16: the next chunk's
+        <code>prev_size</code> is borrowed while this chunk is in use.
+      </div>
+    </div>
+
+    <div class="card" style="padding-bottom:18px">
+      <div class="card-title" style="margin-bottom:10px">Allocator log</div>
+      <div class="log-inner" id="log-inner">
+        <div class="log-entry log-empty">&mdash; no events yet &mdash;</div>
+      </div>
+    </div>
+
+    <div class="card" style="padding-bottom:18px">
+      <div class="card-title" style="margin-bottom:10px">What this model simplifies</div>
+      <div style="font-size:15px;font-weight:600;color:#3A5068;line-height:1.75">
+        One arena, one thread, no locking shown. Sizes, bin ranges, search order, splitting and
+        coalescing are faithful to 2.39. Not modelled: the binmap scan of larger bins,
+        <code>malloc_consolidate()</code> on large frees, <code>last_remainder</code>,
+        <code>mmap()</code> for requests &ge; 128 KB, and the corruption checks in
+        <code>_int_free</code>.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<script>
+// ══ glibc 2.39 constants (x86-64) ═══════════════════════════════════════
+const SIZE_SZ        = 8;       // sizeof(size_t)
+const ALIGN          = 16;      // MALLOC_ALIGNMENT
+const ALIGN_MASK     = 15;      // MALLOC_ALIGN_MASK
+const HEADER         = 16;      // CHUNK_HDR_SZ = prev_size + size
+const MIN_CHUNK      = 32;      // MINSIZE = offsetof(malloc_chunk, fd_nextsize)
+const FAST_MAX       = 128;     // default global_max_fast, in CHUNK bytes
+const MIN_LARGE      = 1024;    // MIN_LARGE_SIZE = (64 - 0) * 16
+const TCACHE_MAX     = 1040;    // MINSIZE + 63*16, largest tcache CHUNK size
+const MAX_TCACHE_REQ = 1032;    // largest request that reaches the tcache
+const TCACHE_SLOTS   = 7;       // TCACHE_FILL_COUNT
+const MMAP_THRESHOLD = 131072;  // default mp_.mmap_threshold
+const INIT_TOP       = 131072;
+const BASE_ADDR      = 0x555555559000;
+
+// Only chunks in these bins have had the neighbour's PREV_INUSE cleared
+// and the footer written. tcache/fastbin chunks still look allocated.
+const CONSOLIDATING = ['unsorted bin', 'smallbins', 'largebins'];
+
+let S       = freshState();
+let pending = null;
+
+// ══ State ═══════════════════════════════════════════════════════════════
+function freshState() {
+  return {
+    chunks: [],            // ordered by offset; the physical heap
+    topFree: INIT_TOP, brkCalls: 0,
+    tcache:   {},          // chunkSize -> [offset, ...]  LIFO, head at 0
+    fastbins: {},          // chunkSize -> [offset, ...]  LIFO, head at 0
+    unsorted: [], smallbins: [], largebins: [],   // [offset, ...]
+    allocSeq: 0, logs: []
+  };
+}
+function cloneMap(m) { const r = {}; for (const k in m) r[k] = m[k].slice(); return r; }
+function cloneState(s) {
+  return {
+    chunks: s.chunks.map(c => ({ ...c })),
+    topFree: s.topFree, brkCalls: s.brkCalls,
+    tcache: cloneMap(s.tcache), fastbins: cloneMap(s.fastbins),
+    unsorted: s.unsorted.slice(), smallbins: s.smallbins.slice(),
+    largebins: s.largebins.slice(),
+    allocSeq: s.allocSeq, logs: s.logs.map(l => ({ ...l }))
+  };
+}
+function restoreState(snap) { S = cloneState(snap); }
+
+// ══ Sizing — exactly glibc's request2size ═══════════════════════════════
+// #define request2size(req)                                   \
+//   (((req) + SIZE_SZ + MALLOC_ALIGN_MASK < MINSIZE) ? MINSIZE \
+//    : ((req) + SIZE_SZ + MALLOC_ALIGN_MASK) & ~MALLOC_ALIGN_MASK)
+// Only SIZE_SZ is added, not 2*SIZE_SZ: while a chunk is in use, the next
+// chunk's prev_size field is unused, so the allocator borrows it.
+function request2size(n) {
+  const t = n + SIZE_SZ + ALIGN_MASK;
+  return t < MIN_CHUNK ? MIN_CHUNK : t - (t % ALIGN);
+}
+function usableOf(chunkSize) { return chunkSize - SIZE_SZ; }
+
+function isTcacheSize(sz)    { return sz >= MIN_CHUNK && sz <= TCACHE_MAX; }
+function isFastbinSize(sz)   { return sz <= FAST_MAX; }
+function inSmallbinRange(sz) { return sz < MIN_LARGE; }
+
+// ══ Chunk / bin helpers ═════════════════════════════════════════════════
+function chunkAt(off)  { return S.chunks.find(c => c.offset === off) || null; }
+function chunkIdx(off) { return S.chunks.findIndex(c => c.offset === off); }
+
+function tcacheCount(sz) { return (S.tcache[sz] || []).length; }
+function tcacheFull(sz)  { return tcacheCount(sz) >= TCACHE_SLOTS; }
+
+function removeFromBins(off) {
+  for (const k in S.tcache) {
+    const i = S.tcache[k].indexOf(off);
+    if (i >= 0) { S.tcache[k].splice(i, 1); if (!S.tcache[k].length) delete S.tcache[k]; return; }
+  }
+  for (const k in S.fastbins) {
+    const i = S.fastbins[k].indexOf(off);
+    if (i >= 0) { S.fastbins[k].splice(i, 1); if (!S.fastbins[k].length) delete S.fastbins[k]; return; }
+  }
+  for (const arr of [S.unsorted, S.smallbins, S.largebins]) {
+    const i = arr.indexOf(off);
+    if (i >= 0) { arr.splice(i, 1); return; }
+  }
+}
+function consolidatable(c) {
+  return !!c && !c.inUse && CONSOLIDATING.indexOf(c.bin) >= 0;
+}
+
+// ══ Search — glibc 2.39 order ═══════════════════════════════════════════
+// tcache -> fastbin -> smallbin -> unsorted -> largebin
+// Smallbins really are searched BEFORE the unsorted bin: an exact-size
+// smallbin hit is O(1) and needs no unsorted scan. Only a large request
+// must drain the unsorted bin first.
+function peekCached(nb) {
+  if (isTcacheSize(nb) && tcacheCount(nb) > 0)
+    return { off: S.tcache[nb][0], binId: 'tcache' };
+
+  if (isFastbinSize(nb) && (S.fastbins[nb] || []).length > 0)
+    return { off: S.fastbins[nb][0], binId: 'fast' };
+
+  if (inSmallbinRange(nb)) {
+    const o = S.smallbins.find(off => chunkAt(off).chunkSize === nb);
+    if (o !== undefined) return { off: o, binId: 'small' };
+  }
+
+  const u = S.unsorted.find(off => chunkAt(off).chunkSize >= nb);
+  if (u !== undefined) return { off: u, binId: 'unsorted' };
+
+  const cands = S.largebins.filter(off => chunkAt(off).chunkSize >= nb);
+  if (cands.length) {
+    const best = cands.reduce((a, b) =>
+      chunkAt(a).chunkSize <= chunkAt(b).chunkSize ? a : b);   // best fit
+    return { off: best, binId: 'large' };
+  }
+  return null;
+}
+
+// Chunks that pass through the unsorted bin without matching get filed
+// into the small or large bins — glibc does this during the unsorted scan.
+function drainUnsorted() {
+  let moved = 0;
+  while (S.unsorted.length) {
+    const off = S.unsorted.shift();
+    const c = chunkAt(off);
+    if (!c) continue;
+    if (inSmallbinRange(c.chunkSize)) { c.bin = 'smallbins'; S.smallbins.push(off); }
+    else                              { c.bin = 'largebins'; S.largebins.push(off); }
+    moved++;
+  }
+  return moved;
+}
+
+// Split a chunk if the remainder is itself a legal chunk.
+function splitIfNeeded(c, nb) {
+  const rem = c.chunkSize - nb;
+  if (rem < MIN_CHUNK) return null;
+  c.chunkSize = nb;
+  const r = {
+    inUse: false, requestedSize: 0, chunkSize: rem,
+    offset: c.offset + nb, label: null, bin: 'unsorted bin'
+  };
+  S.chunks.splice(chunkIdx(c.offset) + 1, 0, r);
+  S.unsorted.push(r.offset);
+  return r;
+}
+
+// ══ free() ══════════════════════════════════════════════════════════════
+function freeChunk(c) {
+  c.inUse = false; c.label = null; c.requestedSize = 0;
+  const sz = c.chunkSize;
+
+  if (isTcacheSize(sz) && !tcacheFull(sz)) {
+    c.bin = 'tcache';
+    (S.tcache[sz] = S.tcache[sz] || []).unshift(c.offset);
+    return { bin: 'tcache', merged: false, toTop: false };
+  }
+  if (isFastbinSize(sz)) {
+    c.bin = 'fastbins';
+    (S.fastbins[sz] = S.fastbins[sz] || []).unshift(c.offset);
+    return { bin: 'fastbins', merged: false, toTop: false };
+  }
+  return consolidateAndPlace(c);
+}
+
+function consolidateAndPlace(c) {
+  let merged = false;
+
+  // backward coalesce
+  let i = chunkIdx(c.offset);
+  const prev = i > 0 ? S.chunks[i - 1] : null;
+  if (consolidatable(prev)) {
+    removeFromBins(prev.offset);
+    prev.chunkSize += c.chunkSize;
+    S.chunks.splice(i, 1);
+    c = prev; merged = true;
+  }
+
+  // forward coalesce
+  i = chunkIdx(c.offset);
+  const next = (i >= 0 && i + 1 < S.chunks.length) ? S.chunks[i + 1] : null;
+  if (consolidatable(next)) {
+    removeFromBins(next.offset);
+    c.chunkSize += next.chunkSize;
+    S.chunks.splice(i + 1, 1);
+    merged = true;
+  }
+
+  // touching the top chunk? absorb into it
+  i = chunkIdx(c.offset);
+  if (i === S.chunks.length - 1) {
+    S.topFree += c.chunkSize;
+    S.chunks.splice(i, 1);
+    return { bin: 'top chunk', merged, toTop: true };
+  }
+
+  c.inUse = false; c.label = null; c.bin = 'unsorted bin';
+  S.unsorted.push(c.offset);
+  return { bin: 'unsorted bin', merged, toTop: false };
+}
+
+function fmtB(b) { return b >= 1024 ? Math.round(b / 1024) + ' KB' : b + ' B'; }
+function addrOf(offset) { return '0x' + (BASE_ADDR + offset + HEADER).toString(16).toUpperCase(); }
+function pushLog(msg, cls) { S.logs.unshift({ msg, cls }); if (S.logs.length > 20) S.logs.pop(); }
+function getBinLabel(id) {
+  return ({ tcache:'tcache', fast:'fastbins', small:'smallbins',
+            unsorted:'unsorted bin', large:'largebins' })[id];
+}
+
+// ══ Render ══════════════════════════════════════════════════════════════
+function renderAll(binHL) { renderLog(); updateBins(binHL); updateStats(); renderChunks(); }
+
+function renderLog() {
+  const el = document.getElementById('log-inner');
+  if (!S.logs.length) { el.innerHTML = '<div class="log-entry log-empty">— no events yet —</div>'; return; }
+  el.innerHTML = S.logs.map(l => `<div class="log-entry ${l.cls}">${l.msg}</div>`).join('');
+}
+
+function updateBins(activeId) {
+  const mapFmt = m => {
+    const parts = Object.keys(m).sort((a,b)=>a-b).map(sz => `${m[sz].length}×${sz}B`);
+    return parts.length ? parts.join(', ') : 'empty';
+  };
+  const setRow = (id, txt, has) => {
+    const el = document.getElementById('bi-' + id);
+    el.textContent = txt;
+    el.className = 'bin-items' + (has ? ' has' : '');
+    document.getElementById('bin-' + id).classList.toggle('active', id === activeId);
+  };
+
+  const tcTotal = Object.values(S.tcache).reduce((a, arr) => a + arr.length, 0);
+  setRow('tcache', mapFmt(S.tcache), tcTotal > 0);
+  const fbTotal = Object.values(S.fastbins).reduce((a, arr) => a + arr.length, 0);
+  setRow('fast', mapFmt(S.fastbins), fbTotal > 0);
+
+  const listFmt = arr => arr.length
+    ? arr.map(off => (chunkAt(off) ? chunkAt(off).chunkSize : '?') + 'B').join(', ')
+    : 'empty';
+  setRow('small',    listFmt(S.smallbins), S.smallbins.length > 0);
+  setRow('unsorted', listFmt(S.unsorted),  S.unsorted.length  > 0);
+  setRow('large',    listFmt(S.largebins), S.largebins.length > 0);
+
+  const kb = Math.round(S.topFree / 1024);
+  setRow('top', kb > 0 ? kb + ' KB free' : S.topFree + ' B', S.topFree > 0);
+}
+
+function updateStats() {
+  const reqB  = S.chunks.filter(c => c.inUse).reduce((a, c) => a + c.requestedSize, 0);
+  const heapB = S.chunks.reduce((a, c) => a + c.chunkSize, 0);
+  document.getElementById('st-used').textContent = fmtB(reqB);
+  document.getElementById('st-heap').textContent = fmtB(heapB);
+  document.getElementById('st-chk').textContent  = S.chunks.length;
+  document.getElementById('st-brk').textContent  = S.brkCalls;
+  document.getElementById('brk-badge').textContent =
+    'brk @ 0x' + (BASE_ADDR + heapB + S.topFree).toString(16).toUpperCase();
+}
+
+function renderChunks() {
+  const el = document.getElementById('chunks-view');
+  if (!S.chunks.length) {
+    el.innerHTML = '<div class="arena-empty">No allocations yet — click ▶ Start to begin.</div>';
+    return;
+  }
+  let html = '';
+  S.chunks.forEach((c, i) => {
+    const a   = addrOf(c.offset);
+    const cls = c.inUse ? 'chunk-used' : 'chunk-free';
+
+    // PREV_INUSE is cleared, and the footer written, ONLY when the previous
+    // chunk sits in a consolidating bin. tcache_put() and the fastbin path
+    // touch nothing outside the freed chunk, so a chunk cached there still
+    // looks in-use to its neighbour.
+    const prev  = i > 0 ? S.chunks[i - 1] : null;
+    const shows = consolidatable(prev);
+    const prevSizeHex = '0x' + (shows ? prev.chunkSize : 0).toString(16);
+    const flagHtml = shows
+      ? `<span style="color:#C06060;font-weight:900"> P=0</span>`
+      : `<span style="color:#005A82;font-weight:900">|P</span>`;
+    const prevSizeStyle = shows
+      ? `style="color:#0F4A28;font-weight:900"`
+      : `style="color:#8AA0B8"`;
+
+    let body;
+    if (c.inUse) {
+      body = `<span class="chunk-name">${c.label}</span>
+              <span class="chunk-ptr">${a}</span>
+              <span class="chunk-arrow">← ptr</span>
+              <span class="chunk-meta">${c.requestedSize}B req / ${usableOf(c.chunkSize)}B usable</span>`;
+    } else {
+      const overlay = c.bin === 'tcache'   ? 'payload holds next (mangled) + key'
+                    : c.bin === 'fastbins' ? 'payload holds fd (mangled)'
+                    : 'payload holds fd / bk';
+      body = `<span class="chunk-name">free — ${c.chunkSize}B</span>
+              <span class="chunk-ptr">${a}</span>
+              <span class="chunk-meta">in ${c.bin} · ${overlay}</span>`;
+    }
+
+    html += `
+      <div class="chunk-row ${cls}">
+        <div class="chunk-hdr">
+          <span><span ${prevSizeStyle}>prev_size: ${prevSizeHex}</span></span>
+          <span>size: 0x${c.chunkSize.toString(16)}${flagHtml}</span>
+        </div>
+        <div class="chunk-body">${body}</div>
+      </div>`;
+  });
+  html += `<div class="chunk-row chunk-top">
+             <div class="chunk-hdr"><span>top chunk</span><span>size: 0x${S.topFree.toString(16)}|P</span></div>
+             <div class="chunk-body"><span class="chunk-name">top (wilderness)</span>
+             <span class="chunk-meta">${fmtB(S.topFree)} free</span></div>
+           </div>`;
+  html += '<div class="brk-line"></div><div class="brk-lbl">↑ program break (brk)</div>';
+  el.innerHTML = html;
+}
+
+// ══ UI helpers ══════════════════════════════════════════════════════════
+function setStep(html) { document.getElementById('step-text').innerHTML = html; }
+function setBadge(t,c) { const e=document.getElementById('step-badge'); e.textContent=t; e.className='step-badge '+(c||''); }
+function setCounter(a,b){ document.getElementById('step-counter').textContent=(a!=null)?`Step ${a} of ${b}`:''; }
+function setHint(t)     { document.getElementById('nav-hint').textContent=t; }
+function setProgress(i) {
+  for (let j=0; j<8; j++)
+    document.getElementById('ps-'+j).className = 'prog-step'+(j<i?' done':j===i?' active':'');
+}
+function syncNav() {
+  const isRunning = !!(pending && pending.autoTimer);
+  document.getElementById('btn-prev').disabled = !pending || pending.idx <= 1 || isRunning;
+  document.getElementById('btn-next').disabled = !pending || pending.idx >= pending.total || isRunning;
+  const autoBtn = document.getElementById('btn-auto');
+  if (!pending || pending.idx >= pending.total) {
+    autoBtn.disabled = true;  autoBtn.textContent = '⚡ Auto'; autoBtn.classList.remove('running');
+  } else if (isRunning) {
+    autoBtn.disabled = false; autoBtn.textContent = '■ Stop'; autoBtn.classList.add('running');
+  } else {
+    autoBtn.disabled = false; autoBtn.textContent = '⚡ Auto'; autoBtn.classList.remove('running');
+  }
+}
+
+// ══ Step list ═══════════════════════════════════════════════════════════
+function buildSteps(n) {
+  const nb        = request2size(n);
+  const usable    = usableOf(nb);
+  const hit       = peekCached(nb);
+  const inTcache  = !!hit && hit.binId === 'tcache';
+  const tcSlots   = tcacheCount(nb);
+  const needsBrk  = !hit && S.topFree < nb;
+  const ext       = Math.max(nb * 4, 65536);
+  const newAddr   = addrOf(S.chunks.reduce((a, c) => a + c.chunkSize, 0));
+  const steps     = [];
+
+  const rangeNote = nb > TCACHE_MAX
+    ? `<span class="hi-amber">${nb}B is past the tcache ceiling of ${TCACHE_MAX}B, so the tcache is skipped entirely.</span>`
+    : `Current tcache count for this size: <strong>${tcSlots}</strong>.`;
+
+  steps.push({
+    prog: 0, bin: null, badge: 'STEP 1',
+    text: `<strong>Step 1 — Request received.</strong><br>
+           <code>malloc(${n})</code> enters <code>__libc_malloc()</code> in
+           <strong>glibc 2.39</strong>. It converts the request to a chunk size, then runs
+           <code>MAYBE_INIT_TCACHE()</code> — on the very first call in a thread this
+           <em>recursively</em> allocates the 640-byte <code>tcache_perthread_struct</code>,
+           which is why the first user chunk is rarely the first chunk on the heap.
+           Only then is the per-thread cache consulted, still with <strong>no lock held</strong>.`,
+    exec: () => {}
+  });
+
+  steps.push({
+    prog: 1, bin: null, badge: 'STEP 2',
+    text: `<strong>Step 2 — Alignment &amp; rounding.</strong><br>
+           <code>request2size(${n}) = max(${MIN_CHUNK}, (${n} + ${SIZE_SZ} + ${ALIGN_MASK}) &amp; ~${ALIGN_MASK})
+           = <strong>${nb}B</strong></code>.<br>
+           Note it adds only <code>SIZE_SZ = 8</code>, <em>not</em> 16: while this chunk is in use the
+           next chunk's <code>prev_size</code> field is unused, so the allocator borrows it.
+           Effective overhead is <strong>8 bytes</strong>, and
+           <code>malloc_usable_size()</code> will report <strong>${usable}B</strong>
+           for a ${n}B request.`,
+    exec: () => {}
+  });
+
+  steps.push({
+    prog: 2, bin: null, badge: 'STEP 3',
+    text: `<strong>Step 3 — Chunk header layout.</strong><br>
+           Every chunk carries a <strong>${HEADER}B header</strong>: <code>prev_size</code> (8B) and
+           <code>size</code> (8B). Because sizes are multiples of 16, the low 3 bits of
+           <code>size</code> carry flags: <code>PREV_INUSE=0x1</code>, <code>IS_MMAPPED=0x2</code>,
+           <code>NON_MAIN_ARENA=0x4</code>.<br>
+           Once freed, the payload is reused for list pointers. A <strong>tcache</strong> entry holds
+           <code>next</code> <em>and</em> <code>key</code> (two words); since glibc 2.32
+           <code>next</code> is mangled by <code>PROTECT_PTR</code>, so it reads as garbage in a debugger.`,
+    exec: () => {}
+  });
+
+  steps.push({
+    prog: 3, bin: 'tcache', badge: 'STEP 4',
+    text: `<strong>Step 4 — tcache checked first.</strong><br>
+           <code>tc_idx = csize2tidx(${nb})</code>. The tcache has 64 bins covering chunk sizes
+           <strong>${MIN_CHUNK}–${TCACHE_MAX}B</strong> (requests up to ${MAX_TCACHE_REQ}B),
+           each holding at most <strong>${TCACHE_SLOTS}</strong> chunks in a singly-linked LIFO list.
+           ${rangeNote}`,
+    exec: () => {}
+  });
+
+  if (inTcache) {
+    steps.push({
+      prog: 4, bin: 'tcache', badge: 'TCACHE HIT', badgeCls: 'done',
+      text: `<strong class="hi-green">Step 5 — tcache hit ✓ (fastest path)</strong><br>
+             A free <code>${nb}B</code> chunk is popped from
+             <code>tcache->entries[tc_idx]</code>, <code>counts[tc_idx]</code> is decremented and
+             <code>key</code> is cleared. <code>__libc_malloc()</code> returns here —
+             <strong>without ever calling <code>_int_malloc()</code></strong>, so no lock is taken,
+             no bin is scanned, and the unsorted bin is not touched.`,
+      exec: () => {
+        const c = chunkAt(hit.off);
+        removeFromBins(hit.off);
+        S.allocSeq++;
+        c.inUse = true; c.label = 'ptr_' + S.allocSeq; c.requestedSize = n; c.bin = null;
+        pushLog(`✓ malloc(${n}) → ${addrOf(c.offset)}  [tcache hit — no lock]`, 'log-ok');
+      }
+    });
+
+    steps.push({
+      prog: 7, bin: null, badge: 'COMPLETE', badgeCls: 'done',
+      text: `<strong>Step 6 — Pointer returned.</strong><br>
+             <code>void* ptr</code> points past the ${HEADER}B header to byte 0 of the payload.
+             You asked for ${n}B and may legally use <strong>${usable}B</strong>.<br>
+             <span class="hi-amber">⚠ Bytes ${n + 1}–${usable} are slack inside your own chunk.
+             The first byte that damages the neighbour's <code>size</code> field is byte
+             ${usable + 1}.</span>`,
+      exec: () => {}
+    });
+
+  } else {
+    const binLbl = hit ? getBinLabel(hit.binId) : null;
+
+    steps.push({
+      prog: 4, bin: hit ? hit.binId : 'fast', badge: 'TCACHE MISS', badgeCls: 'warn',
+      text: `<strong class="hi-amber">Step 5 — tcache miss.</strong><br>
+             ${nb > TCACHE_MAX
+               ? `Size <code>${nb}B</code> is outside the tcache range.`
+               : (tcSlots > 0
+                   ? `The tcache bin for <code>${nb}B</code> is full at ${TCACHE_SLOTS} entries.`
+                   : `The tcache bin for <code>${nb}B</code> is empty.`)}
+             <code>_int_malloc()</code> now locks the arena and searches in this order:
+             <code>fastbins → smallbins → unsorted bin → largebins</code>.<br>
+             <em>Smallbins before the unsorted bin</em> — an exact-size smallbin hit is O(1) and needs
+             no unsorted scan; only a large request must drain the unsorted bin first.
+             ${hit ? `A <code>${chunkAt(hit.off).chunkSize}B</code> chunk is waiting in <code>${binLbl}</code>.`
+                   : 'Nothing suitable in any bin — the top chunk will be used.'}`,
+      exec: () => {}
+    });
+
+    if (hit) {
+      steps.push({
+        prog: 5, bin: hit.binId, badge: 'BIN HIT', badgeCls: 'done',
+        text: `<strong class="hi-green">Step 6 — Bin hit ✓</strong><br>
+               A <code>${chunkAt(hit.off).chunkSize}B</code> chunk is taken from <code>${binLbl}</code>
+               ${hit.binId === 'fast' ? '(popped from a singly-linked LIFO list)'
+                                      : '(unlinked from a doubly-linked list)'}.
+               If it is larger than <code>${nb}B</code> and the remainder is at least
+               <code>${MIN_CHUNK}B</code>, the chunk is <strong>split</strong> and the remainder goes to
+               the unsorted bin.<br>
+               Any chunks left in the unsorted bin that did not match are filed into the
+               <strong>smallbins</strong> or <strong>largebins</strong> at this point.`,
+        exec: () => {
+          const c = chunkAt(hit.off);
+          removeFromBins(hit.off);
+          const rem = splitIfNeeded(c, nb);
+          if (hit.binId === 'unsorted' || hit.binId === 'large') drainUnsorted();
+          S.allocSeq++;
+          c.inUse = true; c.label = 'ptr_' + S.allocSeq; c.requestedSize = n; c.bin = null;
+          pushLog(`✓ malloc(${n}) → ${addrOf(c.offset)}  [${binLbl}, ${nb}B]`
+                  + (rem ? `  (split, ${rem.chunkSize}B remainder → unsorted)` : ''), 'log-ok');
+        }
+      });
+
+    } else {
+      steps.push({
+        prog: 5, bin: 'top', badge: 'USE TOP CHUNK', badgeCls: 'warn',
+        text: `<strong>Step 6 — Carve from the top chunk.</strong><br>
+               No bin holds a usable chunk, so the allocator carves <code>${nb}B</code> from the
+               <strong>top chunk</strong> (<code>av->top</code>) — the single large free block at the
+               current end of the heap. Any unsorted chunks that were scanned on the way are now
+               filed into the small and large bins. Top chunk before: <code>${fmtB(S.topFree)}</code>.`,
+        exec: () => { drainUnsorted(); }
+      });
+
+      if (needsBrk) {
+        steps.push({
+          prog: 6, bin: null, badge: 'brk() CALLED', badgeCls: 'err',
+          text: `<strong class="hi-red">Step 6b — Top chunk exhausted → sysmalloc().</strong><br>
+                 Only <code>${S.topFree}B</code> remains. <code>sysmalloc()</code> extends the heap with
+                 <code>sbrk(${fmtB(ext)})</code>. (The old <code>__default_morecore()</code> wrapper was
+                 <strong>removed in glibc 2.34</strong>.) A request whose chunk size reaches
+                 <code>mmap_threshold</code> — 128 KB by default — is served by its own
+                 <code>mmap()</code> region instead, marked <code>IS_MMAPPED</code>, and returned
+                 straight to the kernel by <code>munmap()</code> on <code>free()</code>.
+                 Thread arenas grow by <code>mmap</code>/<code>mprotect</code>, never by <code>brk</code>.`,
+          exec: () => {
+            S.topFree += ext; S.brkCalls++;
+            pushLog(`⚙ sbrk(${fmtB(ext)}) — heap extended`, 'log-sys');
+          }
+        });
+      }
+
+      steps.push({
+        prog: 7, bin: null, badge: 'COMPLETE', badgeCls: 'done',
+        text: `<strong>Step 7 — Pointer returned.</strong><br>
+               <code>${nb}B</code> carved from the top chunk;
+               <code>void* ptr = ${newAddr}</code>, pointing past the ${HEADER}B header.
+               You asked for ${n}B and may legally use <strong>${usable}B</strong>.<br>
+               <span class="hi-amber">⚠ Byte ${usable + 1} is the first that corrupts the next chunk's
+               <code>size</code> field. Since glibc 2.32, tampering with a freed chunk's
+               <code>next</code> pointer also requires defeating safe-linking, which needs a heap
+               address leak first.</span>`,
+        exec: () => {
+          S.allocSeq++;
+          const offset = S.chunks.reduce((a, c) => a + c.chunkSize, 0);
+          S.chunks.push({ inUse: true, requestedSize: n, chunkSize: nb, offset,
+                          label: 'ptr_' + S.allocSeq, bin: null });
+          S.topFree -= nb;
+          pushLog(`✓ malloc(${n}) → ${newAddr}  [top chunk, ${nb}B]`, 'log-ok');
+        }
+      });
+    }
+
+    if (hit) {
+      steps.push({
+        prog: 7, bin: null, badge: 'COMPLETE', badgeCls: 'done',
+        text: `<strong>Step 7 — Pointer returned.</strong><br>
+               <code>void* ptr</code> points past the ${HEADER}B header to byte 0 of the payload.
+               You asked for ${n}B and may legally use <strong>${usable}B</strong>.<br>
+               <span class="hi-amber">⚠ Byte ${usable + 1} is the first that corrupts the next chunk's
+               <code>size</code> field.</span>`,
+        exec: () => {}
+      });
+    }
+  }
+
+  return steps;
+}
+
+// ══ Navigation ══════════════════════════════════════════════════════════
+function applyStep(s) { setBadge(s.badge, s.badgeCls || ''); setStep(s.text); setProgress(s.prog); renderAll(s.bin); }
+
+function startAlloc() {
+  const n = parseInt(document.getElementById('n-input').value) || 4;
+  if (n < 1 || n > 65536) { setStep('Please enter a size between 1 and 65,536 bytes.'); return; }
+  if (pending && pending.autoTimer) { clearInterval(pending.autoTimer); pending.autoTimer = null; }
+
+  const snaps = [cloneState(S)];
+  const steps = buildSteps(n);
+  steps[0].exec();
+  snaps.push(cloneState(S));
+  pending = { steps, idx: 1, total: steps.length, snaps, autoTimer: null };
+
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-free').disabled  = true;
+  applyStep(steps[0]);
+  setCounter(1, steps.length);
+  setHint(`Step 1 of ${steps.length} — click Next → to advance.`);
+  syncNav();
+}
+
+function nextStep() {
+  if (!pending || pending.idx >= pending.total) return;
+  const s = pending.steps[pending.idx];
+  if (!pending.snaps[pending.idx]) pending.snaps[pending.idx] = cloneState(S);
+  s.exec();
+  pending.snaps[pending.idx + 1] = cloneState(S);
+  pending.idx++;
+  applyStep(s);
+  setCounter(pending.idx, pending.total);
+  if (pending.idx >= pending.total) finishAlloc();
+  else setHint(`Step ${pending.idx} of ${pending.total} — use ← Prev or Next →.`);
+  syncNav();
+}
+
+function prevStep() {
+  if (!pending || pending.idx <= 1) return;
+  pending.idx--;
+  if (pending.snaps[pending.idx]) restoreState(pending.snaps[pending.idx]);
+  applyStep(pending.steps[pending.idx - 1]);
+  setCounter(pending.idx, pending.total);
+  setHint(`Step ${pending.idx} of ${pending.total} — use ← Prev or Next →.`);
+  document.getElementById('btn-next').disabled  = false;
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-free').disabled  = true;
+  syncNav();
+}
+
+function finishAlloc() {
+  pending = null;
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-free').disabled  = S.chunks.filter(c => c.inUse).length === 0;
+  setHint('Allocation complete. Try another malloc() or call free().');
+  syncNav();
+}
+
+function doFree() {
+  const used = S.chunks.filter(c => c.inUse);
+  if (!used.length) return;
+  const chunk = used[used.length - 1];
+  const a  = addrOf(chunk.offset);
+  const sz = chunk.chunkSize;
+  const r  = freeChunk(chunk);
+
+  setBadge('FREE', 'done');
+  let msg;
+  if (r.bin === 'tcache') {
+    msg = `<code>free(${a})</code> — the ${sz}B chunk goes into the <strong>tcache</strong>
+           (fewer than ${TCACHE_SLOTS} entries for this size).<br>
+           <code>tcache_put()</code> writes <code>next</code> and <code>key</code> into the payload and
+           <strong>nothing else</strong> — no coalescing, no arena lock, and the neighbouring chunk's
+           <code>PREV_INUSE</code> stays <strong>set</strong>. Look at the arena: the next chunk still
+           shows <code>|P</code>.`;
+  } else if (r.bin === 'fastbins') {
+    msg = `<code>free(${a})</code> — the ${sz}B chunk goes into a <strong>fastbin</strong>
+           (tcache bin for this size is full, and ${sz} ≤ ${FAST_MAX}B).<br>
+           Again no coalescing and no <code>PREV_INUSE</code> change, so the chunk still looks
+           allocated to its neighbour.`;
+  } else if (r.toTop) {
+    msg = `<code>free(${a})</code> — the chunk ${r.merged ? 'coalesced with its neighbours and ' : ''}
+           sits against the <strong>top chunk</strong>, so it is absorbed into it.
+           Top chunk is now <code>${fmtB(S.topFree)}</code>.`;
+  } else {
+    msg = `<code>free(${a})</code> — too large for tcache and fastbins, so the general path runs:
+           <strong>${r.merged ? 'the chunk is coalesced with its adjacent free neighbour(s)' :
+           'no adjacent free chunk to merge with'}</strong>, the footer
+           <code>prev_size</code> is written, the next chunk's <code>PREV_INUSE</code> is
+           <strong>cleared</strong>, and the result is placed in the <strong>unsorted bin</strong>.
+           It will be filed into a small or large bin on the next <code>malloc()</code>.`;
+  }
+  setStep(msg);
+  pushLog(`↩ free(${a}) → ${r.bin}  [${sz}B]${r.merged ? ' (coalesced)' : ''}`, 'log-free');
+
+  const hl = ({ 'tcache':'tcache', 'fastbins':'fast', 'unsorted bin':'unsorted', 'top chunk':'top' })[r.bin];
+  renderAll(hl);
+  if (S.chunks.filter(c => c.inUse).length === 0)
+    document.getElementById('btn-free').disabled = true;
+  setTimeout(() => renderAll(null), 1500);
+}
+
+function resetSim() {
+  if (pending && pending.autoTimer) clearInterval(pending.autoTimer);
+  S = freshState(); pending = null;
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-free').disabled  = true;
+  setBadge('IDLE', 'idle'); setCounter(null);
+  setStep('Enter a byte size above and click <strong>▶ Start</strong> to begin the <strong>glibc 2.39</strong> heap allocation walkthrough.<br>Use <strong>← Prev</strong> and <strong>Next →</strong> to move one step at a time.');
+  setHint('Start an allocation first.');
+  for (let i=0; i<8; i++) document.getElementById('ps-'+i).className='prog-step';
+  syncNav(); renderAll(null);
+}
+
+function autoPlay() {
+  if (!pending) return;
+  if (pending.autoTimer) {
+    clearInterval(pending.autoTimer); pending.autoTimer = null;
+    setHint(`Paused at step ${pending.idx} of ${pending.total}.`); syncNav(); return;
+  }
+  pending.autoTimer = setInterval(() => {
+    if (!pending || pending.idx >= pending.total) {
+      if (pending && pending.autoTimer) clearInterval(pending.autoTimer);
+      if (pending) pending.autoTimer = null;
+      finishAlloc(); return;
+    }
+    const s = pending.steps[pending.idx];
+    if (!pending.snaps[pending.idx]) pending.snaps[pending.idx] = cloneState(S);
+    s.exec();
+    pending.snaps[pending.idx + 1] = cloneState(S);
+    pending.idx++;
+    applyStep(s);
+    setCounter(pending.idx, pending.total);
+    if (pending.idx >= pending.total) {
+      clearInterval(pending.autoTimer); pending.autoTimer = null; finishAlloc();
+    } else {
+      setHint(`Auto-playing… step ${pending.idx} of ${pending.total}. Click ■ Stop to pause.`);
+      syncNav();
+    }
+  }, 900);
+  setHint(`Auto-playing… step ${pending.idx} of ${pending.total}. Click ■ Stop to pause.`);
+  syncNav();
+}
+
+function setN(n) { document.getElementById('n-input').value = n; }
+renderAll(null);
+
+</script>
+</body>
+</html>
